@@ -32,7 +32,52 @@ th{font-weight:bold}
 td:first-child{text-align:left;color:#8f96c8}
 .fc{color:#ffd84a;font-weight:bold;min-height:1.2em}
 </style></head><body>
-<script src="outprofile.js"></script>
+<script>
+/* outprofile.js を埋め込み(別ファイルが読めなくても動くように) */
+/* 出力デバイス(有線 / Bluetooth)別の補正と音源読み込み。play.html / viewer.html 共通。
+   - ブラウザは「Bluetoothかどうか」を直接は教えてくれないため、AudioContext.outputLatency(出力遅延)が
+     大きいときにワイヤレスとみなして自動判定する。外れたら「出力」のセレクトで手動固定できる。
+   - 補正値は有線用とBluetooth用を別々に保存する(localStorage。play.html と viewer.html で共有)。
+       音源補正(au): 音を何ms早く鳴らすか。遅延で音がノーツより遅れるのを打ち消す。
+       入力補正(of): 判定のずらし(play.html のみ)。 */
+(function(){
+const store={
+ get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},
+ set(k,v){try{localStorage.setItem(k,String(v))}catch(e){}}
+};
+const BT_MS=90;   /* 出力遅延がこれ以上なら Bluetooth 等のワイヤレスと判定 */
+const OP={
+ store,
+ mode(){const m=store.get('p_outmode','auto');return m==='wired'||m==='bt'?m:'auto'},
+ setMode(m){store.set('p_outmode',m)},
+ /* AudioContext.outputLatency をmsで返す。未対応(Safariなど)や0のときは null */
+ latencyMs(ctx){const v=ctx&&typeof ctx.outputLatency==='number'?ctx.outputLatency*1000:0;return v>0?Math.round(v):null},
+ /* 現在使うプロファイル: 'wired' | 'bt' */
+ effective(ctx){const m=OP.mode();if(m!=='auto')return m;const l=OP.latencyMs(ctx);return l!==null&&l>=BT_MS?'bt':'wired'},
+ getOf(p){const s=store.get('p_of_'+p,null);if(s!==null)return+s||0;return p==='wired'?(+store.get('p_of','0')||0):0},
+ setOf(p,v){store.set('p_of_'+p,v)},
+ /* 音源補正(ms)。Bluetoothで未設定のときは測定した出力遅延、測れなければ目安の150ms */
+ getAu(p,ctx){const s=store.get('p_au_'+p,null);if(s!==null)return+s||0;if(p==='bt'){const l=OP.latencyMs(ctx);return l!==null?Math.min(500,l):150}return 0},
+ setAu(p,v){store.set('p_au_'+p,v)},
+ label(p,ctx){const l=OP.latencyMs(ctx);
+  return(p==='bt'?'Bluetooth':'有線・スピーカー')+(OP.mode()==='auto'?'（自動判定）':'')+(p==='bt'?'・アンサー音オフ':'')+' / '+(l!==null?'出力遅延 '+l+' ms':'出力遅延は取得できません')},
+ /* 音源を読み込む。cfg.audio → track.mp3 → track.ogg → track.wav → track.m4a の順に探す */
+ async loadTrack(ctx,base,cfg){
+  const names=[...new Set([cfg&&cfg.audio,'track.mp3','track.ogg','track.wav','track.m4a'].filter(Boolean))],bad=[];
+  for(const f of names){
+   try{
+    const r=await fetch(base+f);if(!r.ok){bad.push(f+' ('+r.status+')');continue}
+    const b=await r.arrayBuffer();
+    const buf=await new Promise((res,rej)=>{const p=ctx.decodeAudioData(b,res,rej);if(p&&p.catch)p.catch(rej)});
+    return{buf,bad,want:names[0]};
+   }catch(e){bad.push(f+' (デコード失敗)')}
+  }
+  return{buf:null,bad,want:names[0]};
+ }
+};
+window.OutProfile=OP;
+})();
+</script>
 <video id="v" playsinline muted autoplay></video>
 <canvas id="c"></canvas>
 <button id="pbtn" class="ui" aria-label="pause">❚❚</button>
