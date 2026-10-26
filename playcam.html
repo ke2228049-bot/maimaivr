@@ -59,6 +59,7 @@ td:first-child{text-align:left;color:#8f96c8}
  </div>
  <div class="sub" id="rs"></div>
  <div class="sub" id="cs"></div>
+ <button class="alt" id="cb" style="display:none">カメラを開始（再試行）</button>
  <button id="go" disabled>読み込み中…</button>
  <a class="btn sub2" href="index.html">← メニューに戻る</a>
 </div></div>
@@ -781,7 +782,7 @@ async function boot(){
   }else msg='音源なし（無音で開始します）';
   $('rs').style.color=msg?'#ff8a8a':'';
   $('rs').textContent=msg+(msg?'  ':'')+`ノーツ ${notes.length} / ${meta.first?'first '+meta.first+'s':''}`;
-  await initCam();$('go').disabled=false;$('go').textContent='START';
+  $('go').disabled=false;$('go').textContent='START';initCam();
  }catch(err){$('rt').textContent='読み込み失敗';$('rs').textContent=String(err.message||err)}
 }
 
@@ -829,19 +830,37 @@ function camFrame(){
  camNext();
 }
 function camNext(){if(vCam.requestVideoFrameCallback)vCam.requestVideoFrameCallback(camFrame);else requestAnimationFrame(camFrame)}
+let camBusy=false;
+const withTO=(p,ms,name)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj(new Error(name+' が '+ms/1000+'秒以内に終わりませんでした')),ms))]);
 async function initCam(){
- const cs=$('cs');
+ if(camBusy||camOK)return;
+ camBusy=true;
+ const cs=$('cs'),cb=$('cb'),say=m=>{cs.style.color='';cs.textContent=m};
+ cb.style.display='none';
+ let step='';
  try{
-  cs.textContent='カメラ・手認識を準備中…';
-  const stm=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:60}}});
-  vCam.srcObject=stm;await vCam.play();
+  step='① カメラの許可';say('① カメラの許可を待っています…（許可ダイアログが出ていれば「許可」）');
+  if(!vCam.srcObject){
+   const stm=await withTO(navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:60}}}),30000,step);
+   vCam.srcObject=stm;
+  }
+  step='② 映像の再生';say('② 映像を再生中…');
+  await withTO(vCam.play(),8000,step);
   const V='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/';
-  const mp=await import(V+'vision_bundle.mjs');
-  const fs=await mp.FilesetResolver.forVisionTasks(V+'wasm');
-  hl=await mp.HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.5,minTrackingConfidence:.5});
-  camOK=true;cs.style.color='';cs.textContent='手認識: 準備OK';camNext();
- }catch(e){cs.style.color='#ff8a8a';cs.textContent='カメラ/手認識の準備に失敗: '+(e.message||e)+'（キーボードの1〜8のみ使えます）'}
+  step='③ 手認識ライブラリの読み込み';say('③ 手認識ライブラリを読み込み中…');
+  const mp=await withTO(import(V+'vision_bundle.mjs'),20000,step);
+  step='④ wasm の読み込み';say('④ wasm を読み込み中…');
+  const fs=await withTO(mp.FilesetResolver.forVisionTasks(V+'wasm'),20000,step);
+  step='⑤ 手認識モデルの読み込み(GPU)';say('⑤ モデルを読み込み中…（初回は数秒〜十数秒）');
+  hl=await withTO(mp.HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.5,minTrackingConfidence:.5}),40000,step);
+  camOK=true;say('手認識: 準備OK');camNext();
+ }catch(e){
+  cs.style.color='#ff8a8a';cs.textContent='失敗（'+step+'）: '+(e.message||e)+'  ※キーボードの1〜8のみ使えます';
+  cb.style.display='block';
+ }
+ camBusy=false;
 }
+$('cb').onclick=()=>initCam();
 function drawHands(){
  const nt=performance.now();
  if(showSk&&nt-handVisT<250){g.save();g.strokeStyle='rgba(255,255,255,.45)';g.lineWidth=1.5;g.beginPath();for(const h of handVis)for(const[a,b]of BONES){g.moveTo(h[a][0],h[a][1]);g.lineTo(h[b][0],h[b][1])}g.stroke();g.restore()}
