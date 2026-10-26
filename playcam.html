@@ -79,6 +79,11 @@ td:first-child{text-align:left;color:#8f96c8}
  <button id="xre">もう一度</button><a class="btn sub2" href="index.html">メニューへ</a>
 </div></div>
 <script>
+/* 診断: JSエラーを準備画面に表示する */
+(()=>{const sh=m=>{const e=document.getElementById('rs');if(e){e.style.color='#ff8a8a';e.textContent=m}};
+addEventListener('error',e=>sh('JSエラー: '+e.message+' (行'+e.lineno+')'));
+addEventListener('unhandledrejection',e=>sh('未処理エラー: '+(e.reason&&e.reason.message||e.reason)));})();
+const dbgRs=m=>{const e=document.getElementById('rs');if(e){e.style.color='';e.textContent=m}};
 const $=id=>document.getElementById(id),cv=$('c'),g=cv.getContext('2d'),TAU=Math.PI*2;
 let S=600,cx,cy,R,notes=[],endT=0,now=-2,playing=true,last=0;
 let hs=6,A=2.25/(.6*hs),speed=1,mirror='none',judge='simple',exHi=false,sndOn=false,sndOff=0,showHud=true;
@@ -751,6 +756,7 @@ function finish(){
 /* ---- 読み込み ---- */
 function pickChart(tx,diff){const m=[...tx.matchAll(/&inote_(\d)=([\s\S]*?)(?=\n&|$)/g)];if(!m.length)return tx;const f=diff&&m.find(x=>x[1]===diff);return(f||m[m.length-1])[2]}
 async function boot(){
+ dbgRs('起動: 設定を読み込み中…');
  const hs0=store.get('p_hs','6');
  $('hs').value=hs0;$('snd').checked=store.get('p_snd','1')==='1';$('fl').checked=store.get('p_fl','1')==='1';
  $('hsv').textContent=(+hs0).toFixed(2);setHS(+hs0);
@@ -763,6 +769,7 @@ async function boot(){
  $('om').value=OutProfile.mode();showProf(true);
  if(!SONG){$('rt').textContent='曲が選ばれていません';$('go').textContent='メニューへ';$('go').disabled=false;$('go').onclick=()=>location.href='index.html';return}
  base='songs/'+encodeURIComponent(SONG)+'/';
+ dbgRs('起動: 譜面を取得中…');
  try{
   const tx=await(await fetch(base+'maidata.txt')).text();
   const gv=k=>(new RegExp('^&'+k+'=(.*)$','m').exec(tx)||[,''])[1].trim();
@@ -774,7 +781,7 @@ async function boot(){
   parse(pickChart(tx,DIFF));prep();buildGroups();resetRun();now=-LEAD;
   for(const f of['song.json','songs.json']){try{const r=await fetch(base+f);if(r.ok){cfg=await r.json();break}}catch(e){}}
   {const c=[...new Set([cfg.jacket,'jacket.jpg','jacket.jpeg','jacket.png','bg.png','bg.jpg'].filter(Boolean))].map(x=>base+x),im=$('jk'),nx=()=>{if(c.length)im.src=c.shift();else im.removeAttribute('src')};im.onerror=nx;nx()}
-  let msg='';
+  let msg='';dbgRs('起動: 音源を読み込み中…');
   if(ctx){
    const lt=await OutProfile.loadTrack(ctx,base,cfg);abuf=lt.buf;
    if(lt.bad.length)console.warn('audio load failed:',lt.bad.join(', '));
