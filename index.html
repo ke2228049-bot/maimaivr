@@ -1,117 +1,116 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>手トラッキング</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>maimai Player</title>
 <style>
-html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff;font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
-video,canvas{position:fixed;left:0;top:0;width:100%;height:100%}
-video{object-fit:cover}
-#hud{position:fixed;left:calc(8px + env(safe-area-inset-left,0px));top:calc(8px + env(safe-area-inset-top,0px));font:12px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.55);padding:6px 8px;border-radius:8px;white-space:pre;pointer-events:none}
-#ctl{position:fixed;left:0;right:0;bottom:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.6);display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
-select,button{font:inherit;font-size:14px;background:#222;color:#fff;border:1px solid #666;border-radius:8px;padding:6px 10px}
-button.go{background:#ff4fa3;border:0;font-weight:bold}
-#start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#0a0b18;text-align:center;padding:20px;z-index:3}
-#start p{max-width:420px;font-size:13px;color:#aab;margin:0}
-#err{color:#ff8a8a;font-size:13px;max-width:420px}
+:root{--bg:#eef0fa;--fg:#23264a;--card:#fff;--ac:#ff4fa3;--mut:#8087b0}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0b18;--fg:#dfe2ff;--card:#171a35}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+h1{font-size:20px;margin:0;padding:16px}
+#wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding:0 16px 24px;max-width:900px;margin:0 auto}
+@media(min-width:720px){#wrap{grid-template-columns:260px 1fr;align-items:start}}
+#list{display:flex;flex-direction:column;gap:8px}
+.song{display:flex;gap:10px;align-items:center;background:var(--card);border:2px solid transparent;border-radius:12px;padding:8px;cursor:pointer;color:inherit;text-align:left;font:inherit;width:100%}
+.song.sel{border-color:var(--ac)}
+.jk{width:56px;height:56px;border-radius:8px;background:linear-gradient(135deg,#ff4fa3,#4f7bff);object-fit:cover;flex:none}
+.song b{display:block;font-size:15px}.song small{color:var(--mut)}
+#detail{background:var(--card);border-radius:14px;padding:16px;min-height:200px}
+#detail .big{width:100%;max-width:240px;aspect-ratio:1;border-radius:12px;object-fit:cover;background:linear-gradient(135deg,#ff4fa3,#4f7bff);display:block;margin-bottom:12px}
+#detail h2{margin:0 0 2px;font-size:20px}
+.diffs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.diffs button{border:2px solid var(--c);background:transparent;color:var(--fg);border-radius:10px;padding:8px 12px;font:inherit;cursor:pointer;min-width:84px}
+.diffs button.sel{background:var(--c);color:#fff}
+.diffs small{display:block;font-size:11px;opacity:.8}
+.act{display:flex;gap:10px}
+.act a{flex:1;text-align:center;padding:12px;border-radius:10px;text-decoration:none;font-weight:bold;background:var(--ac);color:#fff}
+.act a.alt{background:#4f7bff}
+.act a.off{opacity:.4;pointer-events:none}
+#err{color:#d33;padding:0 16px}
 </style></head><body>
-<video id="v" playsinline muted autoplay></video>
-<canvas id="c"></canvas>
-<div id="hud">起動前</div>
-<div id="ctl">
- 判定点<select id="pt"><option value="tip">指先</option><option value="pip">第二関節</option><option value="mcp">指の付け根</option><option value="palm">手のひら中心</option></select>
- 解像度<select id="res"><option value="480">640x480</option><option value="720">1280x720</option></select>
- <label><input type="checkbox" id="skel" checked>骨格</label>
- <label><input type="checkbox" id="vid" checked>映像</label>
-</div>
-<div id="start">
- <h2 style="margin:0">手トラッキング検証</h2>
- <p>背面カメラで両手を検出し、FPS・推論時間・遅延を表示します。骨格が実際の手より遅れて見えるほど遅延が大きいです。手を速く振って確認してください。</p>
- <select id="dl"><option value="GPU">GPU</option><option value="CPU">CPU</option></select>
- <button class="go" id="go">カメラ開始</button>
- <div id="err"></div>
-</div>
-<script type="module">
-import {HandLandmarker,FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
-const $=id=>document.getElementById(id),v=$('v'),cv=$('c'),g=cv.getContext('2d');
-const WASM="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-const MODEL="https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-const FINGERS=[[4,3,2],[8,7,6,5],[12,11,10,9],[16,15,14,13],[20,19,18,17]]; /* [tip,...] */
-const BONES=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
-let hl=null,res=null,resT=0,W=0,H=0,mapS=1,mapX=0,mapY=0;
-const st={fps:0,inf:0,infAvg:0,det:0,cap:null,frames:0,t0:performance.now(),lastVt:-1};
-
-function resize(){W=innerWidth;H=innerHeight;const d=Math.min(devicePixelRatio||1,2);cv.width=W*d;cv.height=H*d;g.setTransform(d,0,0,d,0,0);fit()}
-function fit(){ /* object-fit:cover と同じ写像 */
- const vw=v.videoWidth||W,vh=v.videoHeight||H;mapS=Math.max(W/vw,H/vh);mapX=(W-vw*mapS)/2;mapY=(H-vh*mapS)/2;
+<h1>maimai Player <a href="editor.html" style="font-size:12px;color:var(--ac);font-weight:normal">譜面データ作成</a></h1>
+<div id="err"></div>
+<div id="wrap"><div id="list"></div><div id="detail">曲を選んでください</div></div>
+<script>
+const DN={1:'EASY',2:'BASIC',3:'ADVANCED',4:'EXPERT',5:'MASTER',6:'Re:MASTER',7:'UTAGE'};
+const SLOTS=['4','5','6'];
+const DC={1:'#3bb54a',2:'#3bb54a',3:'#f0a020',4:'#e03a4a',5:'#9b3fd0',6:'#c9a6f0',7:'#ff4fa3'};
+const $=id=>document.getElementById(id);
+function meta(tx){
+ const o={diffs:[]};
+ for(const m of tx.matchAll(/^&(\w+)=(.*)$/gm)){
+  const k=m[1],v=m[2].trim();
+  if(k==='title')o.title=v;else if(k==='artist')o.artist=v;
+  else if(k==='wholebpm')o.bpm=v;
+ }
+ for(const m of tx.matchAll(/^&inote_(\d)=/gm)){
+  const n=m[1],lv=(tx.match(new RegExp('^&lv_'+n+'=(.*)$','m'))||[])[1],ds=(tx.match(new RegExp('^&des_'+n+'=(.*)$','m'))||[])[1];
+  o.diffs.push({n,lv:(lv||'').trim(),des:(ds||'').trim()});
+ }
+ return o;
 }
-const X=(p)=>mapX+p.x*(v.videoWidth||W)*mapS, Y=(p)=>mapY+p.y*(v.videoHeight||H)*mapS;
-addEventListener('resize',resize);resize();
-
-/* 判定点: 指ごとに1点(5個) + 手のひら中心の場合は1点 */
-function judgePts(lm,mode){
- if(mode==='palm'){const ids=[0,5,9,13,17];return[{x:ids.reduce((s,i)=>s+lm[i].x,0)/5,y:ids.reduce((s,i)=>s+lm[i].y,0)/5}]}
- const idx={tip:[4,8,12,16,20],pip:[3,6,10,14,18],mcp:[2,5,9,13,17]}[mode];
- return idx.map(i=>lm[i]);
-}
-
-async function start(){
- $('err').textContent='';
+let songs=[],cur=null,curDiff=null;
+async function main(){
  try{
-  $('go').disabled=true;$('go').textContent='準備中…';
-  const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:$('res').value==='720'?1280:640},height:{ideal:+$('res').value},frameRate:{ideal:60}}});
-  v.srcObject=stream;await v.play();
-  const trk=stream.getVideoTracks()[0],s=trk.getSettings();
-  st.cam=`${s.width}x${s.height}@${Math.round(s.frameRate||0)}`;
-  fit();
-  const fs=await FilesetResolver.forVisionTasks(WASM);
-  hl=await HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:MODEL,delegate:$('dl').value},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.5,minTrackingConfidence:.5});
-  $('start').style.display='none';
-  loop();
- }catch(e){$('err').textContent='失敗: '+(e.message||e);$('go').disabled=false;$('go').textContent='カメラ開始'}
-}
-$('go').onclick=start;
-$('res').onchange=()=>{if(v.srcObject){v.srcObject.getTracks().forEach(t=>t.stop());start()}};
-
-function onFrame(now,meta){
- if(!hl||v.readyState<2)return;
- if(meta&&meta.captureTime!==undefined)st.cap=meta.captureTime; /* 取得できる環境のみ */
- const a=performance.now();
- let r;try{r=hl.detectForVideo(v,a)}catch(e){return}
- const b=performance.now();
- st.inf=b-a;st.infAvg=st.infAvg?st.infAvg*.9+st.inf*.1:st.inf;
- st.frames++;res=r;resT=b;
- if(st.cap!==null&&meta.captureTime!==undefined)st.capLag=b-meta.captureTime;
- else if(meta&&meta.presentationTime!==undefined)st.capLag=b-meta.presentationTime;
-}
-function loop(){
- const nx=()=>v.requestVideoFrameCallback?v.requestVideoFrameCallback((n,m)=>{onFrame(n,m);render();nx()}):requestAnimationFrame(()=>{onFrame(performance.now());render();nx()});
- nx();
-}
-function render(){
- const t=performance.now();
- if(t-st.t0>=1000){st.fps=st.frames*1000/(t-st.t0);st.frames=0;st.t0=t}
- g.clearRect(0,0,W,H);
- v.style.visibility=$('vid').checked?'visible':'hidden';
- if(!res)return;
- const mode=$('pt').value,cols=['#ff4fa3','#4fc3ff'];
- res.landmarks.forEach((lm,hi)=>{
-  const c=cols[hi%2];
-  if($('skel').checked){
-   g.strokeStyle=c;g.lineWidth=2;g.beginPath();
-   for(const[a,b]of BONES){g.moveTo(X(lm[a]),Y(lm[a]));g.lineTo(X(lm[b]),Y(lm[b]))}
-   g.stroke();
-   g.fillStyle='#fff';for(const p of lm){g.beginPath();g.arc(X(p),Y(p),2.5,0,7);g.fill()}
+  const ids=await (await fetch('songs/index.json')).json();
+  for(const id of ids){
+   try{
+    const base='songs/'+encodeURIComponent(id)+'/';
+    const tx=await (await fetch(base+'maidata.txt')).text();
+    let cfg={};for(const f of['song.json','songs.json']){try{const r=await fetch(base+f);if(r.ok){cfg=await r.json();break}}catch(e){}}
+    const m=meta(tx);
+    songs.push({id,base,cfg,title:m.title||id,artist:m.artist||'',bpm:m.bpm,diffs:m.diffs,
+     jackets:[...new Set([cfg.jacket,'jacket.jpg','jacket.jpeg','jacket.png','bg.png','bg.jpg'].filter(Boolean))].map(x=>base+x)});
+   }catch(e){console.warn(id,e)}
   }
-  g.fillStyle='#ffd84a';g.strokeStyle='#000';g.lineWidth=2;
-  for(const p of judgePts(lm,mode)){g.beginPath();g.arc(X(p),Y(p),9,0,7);g.fill();g.stroke()}
- });
- const hands=res.landmarks.length;
- $('hud').textContent=
-`FPS(検出)  ${st.fps.toFixed(1)}
-推論時間   ${st.infAvg.toFixed(1)} ms (今回 ${st.inf.toFixed(1)})
-撮影→結果  ${st.capLag!==undefined?st.capLag.toFixed(0)+' ms':'取得不可'}
-カメラ     ${st.cam||'-'}
-検出した手 ${hands}
-目安: 推論+撮影→結果の合計が約100ms以内なら有望`;
+  render();
+  if(songs.length)select(0);
+ }catch(e){$('err').textContent='songs/index.json を読み込めません。サーバー経由で開いてください。('+e.message+')'}
 }
+function jk(s,cls){const i=document.createElement('img');i.className=cls;const c=s.jackets.slice(),nx=()=>{if(c.length)i.src=c.shift();else i.removeAttribute('src')};i.onerror=nx;nx();return i}
+function render(){
+ const l=$('list');l.textContent='';
+ songs.forEach((s,i)=>{
+  const b=document.createElement('button');b.className='song';b.dataset.i=i;
+  b.append(jk(s,'jk'));
+  const d=document.createElement('div');
+  const t=document.createElement('b');t.textContent=s.title;
+  const a=document.createElement('small');a.textContent=s.artist;
+  d.append(t,a);b.append(d);b.onclick=()=>select(i);l.append(b);
+ });
+}
+function select(i){
+ cur=songs[i];
+ document.querySelectorAll('.song').forEach(e=>e.classList.toggle('sel',+e.dataset.i===i));
+ const last=cur.diffs[cur.diffs.length-1];
+ curDiff=last?last.n:null;
+ detail();
+}
+function detail(){
+ const s=cur,d=$('detail');d.textContent='';
+ d.append(jk(s,'big'));
+ const h=document.createElement('h2');h.textContent=s.title;
+ const p=document.createElement('div');p.style.color='var(--mut)';
+ p.textContent=s.artist+(s.bpm?'  /  BPM '+s.bpm:'');
+ d.append(h,p);
+ const ds=document.createElement('div');ds.className='diffs';
+ [...new Set([...SLOTS,...s.diffs.map(y=>y.n)])].sort().forEach(n=>{
+  const x=s.diffs.find(y=>y.n===n)||{n,missing:1,lv:''};
+  const b=document.createElement('button');b.style.setProperty('--c',DC[x.n]||'#888');
+  b.className=x.n===curDiff?'sel':'';
+  b.innerHTML='<b></b><small></small>';
+  b.firstChild.textContent=DN[x.n]||('Lv'+x.n);
+  b.lastChild.textContent=x.lv?'Lv '+x.lv:'';
+  if(x.missing){b.disabled=true;b.style.opacity='.3';b.style.cursor='default';b.lastChild.textContent='なし'}else b.onclick=()=>{curDiff=x.n;detail()};
+  ds.append(b);
+ });
+ d.append(ds);
+ const q='?song='+encodeURIComponent(s.id)+(curDiff?'&diff='+curDiff:'');
+ const act=document.createElement('div');act.className='act';
+ const v=document.createElement('a');v.className='alt'+(curDiff?'':' off');v.href='viewer.html'+q;v.textContent='譜面を見る';
+ const pl=document.createElement('a');pl.href='play.html'+q;pl.textContent='プレイ';
+ const cm=document.createElement('a');cm.className='alt';cm.href='playcam.html'+q;cm.textContent='カメラ';
+ act.append(v,pl,cm);d.append(act);
+}
+main();
 </script></body></html>
