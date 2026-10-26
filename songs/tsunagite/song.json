@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "genre": "maimai",
+  "jacket": "jacket.jpg",
+  "audio": "track.flac",
+  "audioOffsetMs": 0,
+  "previewStart": 0
+}
