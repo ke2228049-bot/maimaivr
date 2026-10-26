@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Play (Camera)</title>
+<style>
+:root{--ac:#ff4fa3}
+html,body{margin:0;height:100%;overflow:hidden;background:#0a0b18;color:#dfe2ff;font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+video{position:fixed;left:0;top:0;width:100%;height:100%;object-fit:cover;background:#000}
+canvas{position:fixed;left:0;top:0;display:block;touch-action:none}
+.ov{position:fixed;left:0;top:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;background:rgba(5,6,16,.9);z-index:5}
+.ov.on{display:flex}
+.panel{width:min(92vw,460px);max-height:94vh;overflow:auto;touch-action:pan-y;background:#171a35;border-radius:16px;padding:16px;text-align:center;box-sizing:border-box}
+.panel h2{margin:6px 0 2px;font-size:20px}
+.panel .sub{color:#8f96c8;font-size:13px}
+.jk{width:120px;height:120px;border-radius:12px;object-fit:cover;background:linear-gradient(135deg,#ff4fa3,#4f7bff)}
+.dtag{display:inline-block;margin:6px 0;padding:2px 12px;border-radius:99px;font-weight:bold;font-size:13px;color:#fff}
+.set{text-align:left;font-size:13px;margin:10px 0}
+.set label{display:block;margin:8px 0 2px}
+.set input[type=range]{width:100%;accent-color:var(--ac)}
+.set small{color:#8f96c8}
+.set select{background:#0f1126;color:#dfe2ff;border:1px solid #3a3f78;border-radius:6px;padding:4px 6px;font-size:13px;margin-left:6px}
+button,.btn{display:block;width:100%;box-sizing:border-box;border:0;border-radius:12px;padding:13px;margin:8px 0 0;font:inherit;font-weight:bold;font-size:16px;background:var(--ac);color:#fff;text-align:center;text-decoration:none;cursor:pointer}
+button.alt,.btn.alt{background:#4f7bff}
+button.sub2,.btn.sub2{background:transparent;border:1px solid #8886;color:#dfe2ff}
+button:disabled{opacity:.5}
+#pbtn{position:fixed;left:calc(8px + env(safe-area-inset-left,0px));top:calc(8px + env(safe-area-inset-top,0px));z-index:4;width:44px;height:44px;padding:0;margin:0;border-radius:50%;background:rgba(255,255,255,.14);font-size:18px;display:none}
+.rank{font-size:44px;font-weight:900;letter-spacing:1px;background:linear-gradient(180deg,#ffe98a,#ff9a2e);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1.1}
+.ach{font-size:28px;font-weight:bold}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0}
+td,th{padding:4px 2px;text-align:center}
+th{font-weight:bold}
+td:first-child{text-align:left;color:#8f96c8}
+.fc{color:#ffd84a;font-weight:bold;min-height:1.2em}
+</style></head><body>
+<script src="outprofile.js"></script>
+<video id="v" playsinline muted autoplay></video>
+<canvas id="c"></canvas>
+<button id="pbtn" class="ui" aria-label="pause">❚❚</button>
+
+<div id="ready" class="ov on ui"><div class="panel">
+ <img id="jk" class="jk" alt="">
+ <h2 id="rt">読み込み中…</h2><div class="sub" id="ra"></div>
+ <div class="dtag" id="rd" style="display:none"></div>
+ <div class="set">
+  <label>Hi-Speed <b id="hsv">6.00</b><input id="hs" type="range" min="2" max="10" step="0.25" value="6"></label>
+  <label>出力 <select id="om"><option value="auto">自動判定</option><option value="wired">有線・スピーカー</option><option value="bt">Bluetooth</option></select></label>
+  <small id="od"></small>
+  <label>音源補正 <b id="auv">0</b> ms<input id="au" type="range" min="0" max="500" step="5" value="0"></label>
+  <small>音がノーツより遅れるとき（Bluetoothなど）→ 上げると音が早く鳴る</small>
+  <label>入力補正 <b id="ofv">0</b> ms<input id="of" type="range" min="-250" max="100" step="1" value="-60"></label>
+  <small>LATEが多い→マイナス側 / FASTが多い→プラス側</small>
+  <label><input id="snd" type="checkbox" checked> ヒット音</label>
+  <label><input id="fl" type="checkbox" checked> FAST / LATE 表示</label>
+  <label>判定点 <select id="pt"><option value="tip">指先</option><option value="pip" selected>第二関節</option><option value="mcp">指の付け根</option><option value="palm">手のひら中心</option></select></label>
+  <label>動き判定しきい値 <b id="mvv">3</b> %<input id="mv" type="range" min="0" max="12" step="0.5" value="3"></label>
+  <small>譜面半径に対するこの割合以上、直近0.12秒で動いた点だけがタップ/タッチの判定に使われます（0で無効）。ホールドとスライドは対象外</small>
+  <label>映像の暗さ <b id="dmv">35</b> %<input id="dm" type="range" min="0" max="85" step="5" value="35"></label>
+  <label><input id="skl" type="checkbox" checked> 骨格表示</label>
+ </div>
+ <div class="sub" id="rs"></div>
+ <div class="sub" id="cs"></div>
+ <button id="go" disabled>読み込み中…</button>
+ <a class="btn sub2" href="index.html">← メニューに戻る</a>
+</div></div>
+
+<div id="pause" class="ov ui"><div class="panel">
+ <h2>PAUSE</h2>
+ <button id="pr">再開</button><button id="pt" class="alt">最初から</button><a class="btn sub2" href="index.html">メニューへ</a>
+</div></div>
+
+<div id="result" class="ov ui"><div class="panel">
+ <div class="sub" id="xt"></div>
+ <div class="rank" id="xr"></div>
+ <div class="ach" id="xa"></div>
+ <div class="fc" id="xf"></div>
+ <table id="xtab"></table>
+ <div class="sub" id="xm"></div>
+ <button id="xre">もう一度</button><a class="btn sub2" href="index.html">メニューへ</a>
+</div></div>
+<script>
+const $=id=>document.getElementById(id),cv=$('c'),g=cv.getContext('2d'),TAU=Math.PI*2;
+let S=600,cx,cy,R,notes=[],endT=0,now=-2,playing=true,last=0;
+let hs=6,A=2.25/(.6*hs),speed=1,mirror='none',judge='simple',exHi=false,sndOn=false,sndOff=0,showHud=true;
+const ang=k=>-Math.PI/2+(k-.5)*Math.PI/4,P=(k,r=1)=>[Math.cos(ang(k))*r,Math.sin(ang(k))*r];
+const wrap=k=>((k-1)%8+8)%8+1,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const COL={tap:'#ff69b4',each:'#FFD700',brk:'#FF8C00',star:'#00CED1',starEach:'#FFE44D',touch:'#00BFFF'};
+
+/* ================= 譜面パーサ ================= */
+function durOf(s,bpm){let b=s.replace(/[\[\]]/g,'');if(b.includes('##'))b=b.split('##')[1];if(b[0]==='#')return +b.slice(1);const h=b.indexOf('#');if(h>0){bpm=+b.slice(0,h);b=b.slice(h+1)}if(!b.includes(':'))return +b||240/bpm;const q=b.split(':');return 240/bpm/q[0]*q[1]}
+/* ===== スライド形状: 参考元 SlideCalculator.T と同じ式(半径1の単位円で計算し、折れ線にサンプリング) ===== */
+function arcPts(cx,cy,r,a0,sw){const N=Math.max(8,Math.ceil(Math.abs(sw)/(Math.PI/48))),o=[];for(let i=0;i<=N;i++){const t=a0+sw*i/N;o.push([cx+Math.cos(t)*r,cy+Math.sin(t)*r])}return o}
+const SW_P=[-1.25,-1,-.75,-.5,-.25,-2,-1.75,-1.5],SW_Q=[1.25,1.5,1.75,2,.25,.5,.75,1],
+ SW_PP=[-1.25,-1.125,-.75,-2.25,-2,-1.875,-1.625,-1.5],SW_QQ=[1.25,1.5,1.625,1.875,2,2.25,.75,1.125];
+function seg(sh,s,tg,via){
+ const a=P(s),b=P(tg),T2=Math.PI*2,df=((tg-s)%8+8)%8;
+ if(sh==='-'||sh==='w')return[a,b];
+ if(sh==='v')return df===4?[a,b]:[a,[0,0],b];
+ if(sh==='V')return[a,P(via),b];
+ if(sh==='^'){let f=ang(tg)-ang(s);while(f>Math.PI)f-=T2;while(f<-Math.PI)f+=T2;return arcPts(0,0,1,ang(s),f)}
+ if(sh==='<'||sh==='>'){
+  let h=ang(tg)-ang(s);while(h>Math.PI)h-=T2;while(h<-Math.PI)h+=T2;
+  const top=s===1||s===2||s===7||s===8;
+  if(sh==='>'){if(top){if(h<=0)h+=T2}else{if(h>=0)h-=T2}}else{if(top){if(h>=0)h-=T2}else{if(h<=0)h+=T2}}
+  return arcPts(0,0,1,ang(s),h);
+ }
+ if(sh==='s'||sh==='z'){
+  const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,px=-uy,py=ux,D=.4;
+  const A=[a[0]+ux*L*.49+px*D,a[1]+uy*L*.49+py*D],B=[a[0]+ux*L*.51-px*D,a[1]+uy*L*.51-py*D];
+  return sh==='s'?[a,A,B,b]:[a,B,A,b];
+ }
+ if(sh==='pp'||sh==='qq'){
+  const r=P((s-1+4)%8+1),o=[a[0]+.4*(r[0]-a[0]),a[1]+.4*(r[1]-a[1])],L=Math.hypot(r[0]-a[0],r[1]-a[1]),ux=(r[0]-a[0])/L,uy=(r[1]-a[1])/L,f=.45,
+   q=sh==='qq',cx=q?o[0]-uy*f:o[0]+uy*f,cy=q?o[1]+ux*f:o[1]-ux*f,y0=Math.atan2(o[1]-cy,o[0]-cx),
+   sw=(q?SW_QQ:SW_PP)[df]*Math.PI;
+  return[a,...arcPts(cx,cy,f,y0,sw),b];
+ }
+ /* p / q: 始点と(始点+5 / +3)の中点を通る、中心を中心とした円弧 */
+ const q=sh==='q',r=P((s+(q?3:5)-1)%8+1),o=[(a[0]+r[0])/2,(a[1]+r[1])/2],h=Math.hypot(o[0],o[1]),c=Math.atan2(o[1],o[0]),
+  sw=(q?SW_Q:SW_P)[df]*Math.PI;
+ return[a,...arcPts(0,0,h,c,sw),b];
+}
+function mkPath(pts){const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));return{pts,cum,len:cum[cum.length-1]}}
+function at(pa,d){let i=1;while(i<pa.cum.length-1&&pa.cum[i]<d)i++;const a=pa.pts[i-1],b=pa.pts[i],u=clamp((d-pa.cum[i-1])/((pa.cum[i]-pa.cum[i-1])||1),0,1);return[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,Math.atan2(b[1]-a[1],b[0]-a[0])]}
+function addSlide(n,str,bpm){
+ let i=0,cur=n.l,poly=[],paths=null,wait=0,wInfo=null,beats=0,cb=null,fixed=null,brk=0;
+ while(i<str.length&&'-^<>vVpqszw'.includes(str[i])){
+  let sh=str[i++];if((sh==='p'||sh==='q')&&str[i]===sh){sh+=sh;i++}
+  let via=0;if(sh==='V')via=+str[i++];
+  const tg=+str[i++];
+  if(sh==='w'){wInfo={a:cur,b:tg};const a=P(cur),b=P(tg),m=[(a[0]+b[0])*.3,(a[1]+b[1])*.3];paths=[wrap(tg-1),tg,wrap(tg+1)].map(k=>mkPath([a,m,P(k)]))}
+  else{const pts=seg(sh,cur,tg,via);poly=poly.concat(poly.length?pts.slice(1):pts)}
+  cur=tg;
+  while(str[i]==='b'||str[i]==='x'){if(str[i]==='b')brk=1;i++}   /* 終点の後ろの b/x を読み飛ばす(これを飛ばさないと [8:1] が読めず長さが4拍になる) */
+  const bm=/^\[([^\]]*)\]/.exec(str.slice(i));
+  if(bm){
+   i+=bm[0].length;const q0=bm[1];
+   if(/^[\d.]+##[\d.]+$/.test(q0)){const[w,d]=q0.split('##');wait=+w;fixed=(fixed||0)+ +d}
+   else if(q0[0]==='#')fixed=(fixed||0)+ +q0.slice(1);
+   else{let q=q0;const h=q.indexOf('#');if(h>0){if(cb===null)cb=+q.slice(0,h);q=q.slice(h+1)}q=q.split('##')[0];const[nn,mm]=q.split(':');if(+nn>0)beats+=4/nn*(+mm||1)}
+  }
+ }
+ if(!paths){if(poly.length<2)return;paths=[mkPath(poly)]}
+ const rest=str.slice(i),sb=60/(cb||bpm);
+ /* 参考元と同じ: 長さ = 全括弧の拍数の合計 × 60/(指定BPM or 現在BPM)、括弧なしは1拍、待ち = 指定BPMの1拍 */
+ n.sl.push({paths,w:wInfo,d:fixed!==null?fixed:(beats||1)*sb,beat:wait||sb,b:(brk||rest.includes('b'))?1:0});
+}
+function pn(p,t,bpm){
+ const pcs=p.split('*'),f=pcs[0],tm=/^([A-E])([1-8])?(.*)$/.exec(f);
+ if(tm){const r=tm[3],n={k:'touch',z:tm[1],i:+tm[2]||0,t,d:0,fw:r.includes('f')};if(r.includes('h')){const m=/\[[^\]]*\]/.exec(r);n.d=m?durOf(m[0],bpm):240/bpm/1280}return n}
+ const n={k:'tap',l:+f[0],t,d:0,b:0,x:0,sl:[]};let r=f.slice(1),h=0;
+ while(r&&'bxf$@?!h'.includes(r[0])){const c=r[0];r=r.slice(1);if(c==='b')n.b=1;if(c==='x')n.x=1;if(c==='h')h=1;if(c==='$')n.st=1;if(c==='@')n.ns=1;if(c==='?'||c==='!')n.hid=1}
+ if(h){const m=/^\[[^\]]*\]/.exec(r);n.d=m?durOf(m[0],bpm):240/bpm/1280;if(m)r=r.slice(m[0].length);n.k='hold'}
+ if(r)addSlide(n,r,bpm);
+ for(let j=1;j<pcs.length;j++)addSlide(n,pcs[j],bpm);
+ if(n.k==='tap'&&(n.st||(n.sl.length&&!n.ns)))n.k='star';if(n.hid&&n.sl.length)n.k='hid';if(n.sl.length>1)n.each=1;
+ return n;
+}
+function addTok(tok,t,bpm,out){
+ const hs2=[];
+ for(const p of tok.split('/')){
+  if(/^[1-8]{2,}$/.test(p)){for(const d of p)hs2.push(pn(d,t,bpm))}
+  else if(p){const n=pn(p,t,bpm);if(n)hs2.push(n)}
+ }
+ if(hs2.length>1)hs2.forEach(h=>h.each=1);
+ out.push(...hs2);
+}
+let ev=[],tot=[0,0,0],bl=[[0,120]],bt=[[0,0]];
+function parse(src){
+ const s=src.replace(/\s+/g,'').replace(/`/g,'');
+ let bpm=120,div=4,fx=0,t=0,beat=0,i=0,tok='',out=[];bl=[[0,120]];bt=[[0,0]];
+ while(i<s.length){
+  const c=s[i];
+  if(c==='('){const j=s.indexOf(')',i);bpm=+s.slice(i+1,j)||bpm;bl.push([t,bpm]);i=j+1;continue}
+  if(c==='{'){const j=s.indexOf('}',i),v=s.slice(i+1,j);if(v[0]==='#')fx=+v.slice(1);else{div=+v||div;fx=0}i=j+1;continue}
+  if(c===','){if(tok)addTok(tok,t,bpm,out);tok='';t+=fx||240/bpm/div;beat+=fx?fx*bpm/60:4/div;bt.push([beat,t]);i++;continue}
+  tok+=c;i++;
+ }
+ if(tok&&tok!=='E')addTok(tok,t,bpm,out);
+ out.sort((a,b)=>a.t-b.t);
+ notes=out;endT=Math.max(t,...out.map(n=>n.t+n.d+Math.max(0,...(n.sl||[]).map(x=>x.beat+x.d))));
+ now=-2;
+}
+/* 時間(秒)⇔拍 変換(BPM変化対応) */
+function bpmAt(t){let b=bl[0][1];for(const q of bl)if(q[0]<=t)b=q[1];return b}
+function t2b(t){
+ if(t<=0)return t*bpmAt(0)/60;
+ for(let i=1;i<bt.length;i++)if(t<=bt[i][1]){const a=bt[i-1],b=bt[i];return a[0]+(b[0]-a[0])*(t-a[1])/((b[1]-a[1])||1)}
+ const l=bt[bt.length-1];return l[0]+(t-l[1])*bpmAt(t)/60;
+}
+function b2t(b){
+ if(b<=0)return b*60/bpmAt(0);
+ for(let i=1;i<bt.length;i++)if(b<=bt[i][0]){const a=bt[i-1],c=bt[i];return a[1]+(c[1]-a[1])*(b-a[0])/((c[0]-a[0])||1)}
+ const l=bt[bt.length-1];return l[1]+(b-l[0])*60/bpmAt(endT);
+}
+
+/* ================= アニメーション(描画)システム ================= */
+function resize(){
+ WW=innerWidth;HH=innerHeight;S=Math.floor(Math.max(280,Math.min(WW,HH,1000)));const d=Math.min(devicePixelRatio||1,2);
+ cv.width=WW*d;cv.height=HH*d;cv.style.width=WW+'px';cv.style.height=HH+'px';g.setTransform(d,0,0,d,0,0);
+ OX=Math.floor((WW-S)/2);OY=Math.floor((HH-S)/2);cx=cy=S/2;R=S*.45;   /* 描画は全画面キャンバス上で、譜面だけ中央の正方形に translate */
+}
+const BG='#1a1a2e',U=()=>R/300;
+const laneXY=(l,r)=>[cx+Math.cos(ang(l))*r,cy+Math.sin(ang(l))*r];
+const ZR={A:.9,B:.465,C:0,D:.9,E:.66};
+function tpos(n){
+ if(n.z==='C')return[cx,cy];
+ const a=(n.z==='D'||n.z==='E')?-Math.PI/2+(n.i-1)*Math.PI/4:ang(n.i),r=R*ZR[n.z];
+ return[cx+Math.cos(a)*r,cy+Math.sin(a)*r];
+}
+/* ノーツ位置: 半分の時間は中心近くで拡大、残り半分で判定線へ移動 */
+function nPos(tn,hold){
+ const half=A/2,d=tn-now;
+ if(d>A)return{r:.25,s:0,d};
+ let r,s=1;
+ if(d>half){r=.25;s=1-(d-half)/half}
+ else if(d>=0){r=.25+.75*(1-d/half)}
+ else r=hold?1:.25+.75*(1+(-d/half));
+ return{r,s,d};
+}
+function dot(x,y,r,c){g.beginPath();g.arc(x,y,r,0,TAU);g.fillStyle=c;g.fill()}
+function trail(l,r,c){
+ if(r<R*.06)return;
+ const a=ang(l),w=Math.PI/8,sg=w/4;
+ g.save();g.strokeStyle=c;g.lineWidth=2*U();
+ g.globalAlpha=.4;g.beginPath();g.arc(cx,cy,r,a-w,a+w);g.stroke();
+ for(let i=1;i<=4;i++){
+  g.globalAlpha=.4*(1-i/5);
+  g.beginPath();g.arc(cx,cy,r,a-w-i*sg,a-w-(i-1)*sg);g.stroke();
+  g.beginPath();g.arc(cx,cy,r,a+w+(i-1)*sg,a+w+i*sg);g.stroke();
+ }
+ g.restore();
+}
+function eachArc(l1,l2,r){
+ let dd=((l2-l1)%8+8)%8;if(dd>4){const t=l1;l1=l2;l2=t;dd=8-dd}
+ g.save();g.globalAlpha=.7;g.strokeStyle='#FFD700';g.lineWidth=2*U();g.beginPath();
+ if(dd===4)g.arc(cx,cy,r,0,TAU);else g.arc(cx,cy,r,ang(l1),ang(l1)+dd*Math.PI/4);
+ g.stroke();g.restore();
+}
+function haloFill(c,pathFn,holeFn){g.beginPath();pathFn();holeFn();g.fillStyle=c;g.fill()}
+function tapShape(x,y,sc,c,brk,ex){
+ const o=R/12.5*sc*1.36,i=.65*o;
+ if(ex){const h=exHi?1.19*1.2:1.19;g.beginPath();g.arc(x,y,o*h,0,TAU,false);g.arc(x,y,o,0,TAU,true);g.closePath();g.fillStyle=brk?'rgba(255,200,120,.8)':c===COL.each?'rgba(255,245,150,.8)':'rgba(255,180,210,.8)';g.fill()}
+ g.beginPath();g.arc(x,y,o,0,TAU,false);g.arc(x,y,i,0,TAU,true);g.closePath();
+ if(brk){const gr=g.createRadialGradient(x,y,i,x,y,o);gr.addColorStop(0,'#FFB347');gr.addColorStop(.5,'#FF8C00');gr.addColorStop(1,'#FF6600');g.fillStyle=gr}else g.fillStyle=c;
+ g.fill();
+ g.strokeStyle='#fff';g.lineWidth=2*U();
+ g.beginPath();g.arc(x,y,o,0,TAU);g.stroke();g.beginPath();g.arc(x,y,i,0,TAU);g.stroke();
+ dot(x,y,.15*o,brk?COL.brk:c);
+}
+function starPts(x,y,r,rot=0){const a=[];for(let i=0;i<10;i++){const th=i*Math.PI/5-Math.PI/2+rot,rr=i%2?r*.5:r;a.push([x+Math.cos(th)*rr,y+Math.sin(th)*rr])}return a}
+function polyPath(pts,rev){const a=rev?pts.slice().reverse():pts;a.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.closePath()}
+/* 中空の星(スライド始点・マーカー共通) */
+function starShape(x,y,r,c,ex,exCol){
+ if(ex){const h=exHi?1.19*1.2:1.19;g.beginPath();polyPath(starPts(x,y,r*h));polyPath(starPts(x,y,r),true);g.fillStyle=exCol;g.fill()}
+ g.beginPath();polyPath(starPts(x,y,r));polyPath(starPts(x,y,r*.55),true);g.fillStyle=c;g.fill();
+ g.strokeStyle='#fff';g.lineWidth=2*U();g.lineJoin='round';
+ g.beginPath();polyPath(starPts(x,y,r));g.stroke();g.beginPath();polyPath(starPts(x,y,r*.55));g.stroke();
+ dot(x,y,.15*r,c);
+}
+/* 六角形ホールド(始点側は外向き、終点側は内向きの頂点) */
+function holdShape(hp,ep,l,c){
+ const a=ang(l),sz=R/12.5*1.5;
+ const px=cx+Math.cos(a)*R*hp.r,py=cy+Math.sin(a)*R*hp.r,ex=cx+Math.cos(a)*R*ep.r,ey=cy+Math.sin(a)*R*ep.r;
+ const g1=sz*hp.s,g2=sz*Math.max(ep.s,hp.s),m=a+Math.PI/3,b=a-Math.PI/3,r1=a+Math.PI-Math.PI/3,r2=a+Math.PI+Math.PI/3,k=.62;
+ const V=(f)=>[
+  [px+Math.cos(a)*g1*f,py+Math.sin(a)*g1*f],[px+Math.cos(m)*g1*f,py+Math.sin(m)*g1*f],
+  [ex+Math.cos(r1)*g2*f,ey+Math.sin(r1)*g2*f],[ex+Math.cos(a+Math.PI)*g2*f,ey+Math.sin(a+Math.PI)*g2*f],
+  [ex+Math.cos(r2)*g2*f,ey+Math.sin(r2)*g2*f],[px+Math.cos(b)*g1*f,py+Math.sin(b)*g1*f]];
+ g.beginPath();polyPath(V(1));polyPath(V(k),true);g.fillStyle=c;g.fill();
+ g.strokeStyle='#fff';g.lineWidth=2*U();g.lineJoin='round';
+ g.beginPath();polyPath(V(1));g.stroke();g.beginPath();polyPath(V(k));g.stroke();
+ dot(px,py,.15*g1,c);if(ep.d<=A/2)dot(ex,ey,.15*g2,c);
+}
+function chev(x,y,a,c){
+ const h=32*U(),w=9.6*U(),lw=12.8*U();
+ g.save();g.translate(x,y);g.rotate(a);g.lineCap='round';g.lineJoin='round';
+ g.beginPath();g.moveTo(-w/2,-h/2);g.lineTo(w/2,0);g.lineTo(-w/2,h/2);
+ g.lineWidth=lw+4;g.strokeStyle='#000';g.stroke();
+ g.lineWidth=lw;g.strokeStyle=c;g.stroke();
+ g.restore();
+}
+function fanChev(x,y,a,h,w,c){
+ g.save();g.translate(x,y);g.rotate(a);g.lineCap='round';g.lineJoin='round';
+ g.beginPath();g.moveTo(-w/2,-h/2);g.lineTo(w/2,0);g.lineTo(-w/2,h/2);
+ g.lineWidth=19.2*U()+4;g.strokeStyle='#000';g.stroke();
+ g.lineWidth=19.2*U();g.strokeStyle=c;g.stroke();
+ g.restore();
+}
+function drawSlide(n,s){
+ const t0=n.t+s.beat,end=t0+s.d,half=A/2;
+ if(s.res!==undefined||now<n.t-half||now>end+.6)return;
+ const fade=clamp((now-(n.t-half))/half,0,1),c=s.b?COL.brk:n.each?COL.starEach:COL.star;
+ const q=clamp((now-t0)/s.d,0,1),qv=s.pf||0;
+ g.save();g.globalAlpha=fade;
+ const sp=26.89/300;
+ if(s.w){
+  /* wifiスライド: 始点から扇状に大きくなるシェブロン */
+  const[x0,y0]=laneXY(s.w.a,R),[x1,y1]=laneXY(s.w.b,R),dx=x1-x0,dy=y1-y0,L=Math.hypot(dx,dy),a=Math.atan2(dy,dx),N=Math.floor(L/(46.64867*U()));
+  for(let v=N-2;v>=0;v--){
+   const f=(v+.5)/N;if(f<qv)continue;
+   fanChev(x0+dx*f,y0+dy*f,a,(20+260*f)*U()*1.55,(6.78+44.07*f)*U()*1.5,c);
+  }
+ }else
+ for(const pa of s.paths){
+  const N=Math.floor(pa.len/sp);
+  for(let r=N-1;r>=0;r--){
+   const f=(r+.5)/N;if(f<qv)continue;
+   const[x,y,a]=at(pa,pa.len*f);chev(cx+x*R,cy+y*R,a,c);
+  }
+ }
+ g.restore();
+ if(now>=n.t){
+  const sc=now<t0?clamp((now-n.t)/s.beat,0,1):1;
+  for(const pa of s.paths){
+   const[x,y]=at(pa,now<t0?0:pa.len*q);
+   starShape(cx+x*R,cy+y*R,R/10.42*1.2*sc,c,false);
+  }
+ }
+}
+function rpoly(pts,rad){
+ const n=pts.length;
+ for(let i=0;i<n;i++){
+  const p=pts[(i+n-1)%n],c=pts[i],q=pts[(i+1)%n];
+  const ax=c[0]-p[0],ay=c[1]-p[1],al=Math.hypot(ax,ay)||1,bx=q[0]-c[0],by=q[1]-c[1],bl2=Math.hypot(bx,by)||1;
+  const rr=Math.min(rad,al/2,bl2/2),sx=c[0]-ax/al*rr,sy=c[1]-ay/al*rr,ex=c[0]+bx/bl2*rr,ey=c[1]+by/bl2*rr;
+  i?g.lineTo(sx,sy):g.moveTo(sx,sy);g.quadraticCurveTo(c[0],c[1],ex,ey);
+ }
+ g.closePath();
+}
+function drawTouch(n){
+ const hold=n.d>0,d=n.t-now,r=A*.9,lim=hold?n.d+.05:.05;
+ if(d>r||d<-lim||(n.res!==undefined&&n.res<4))return;
+ let al=1;if(d>.95*r)al=1-(d-.95*r)/(.05*r);
+ let ha=1;if(d>0&&d<r){const tt=r-d;if(tt<.15)ha=tt/.15}
+ const cs=R/12.5*1.3,ls=R/6.25*1.1;let u=cs;
+ if(d>0&&d<=r){const p=1-d/r;u=ls-(ls-cs)*p*p*p*p}else if(d>r)u=ls;
+ const[x,y]=tpos(n),each=n.each;
+ g.save();g.globalAlpha=al;
+ dot(x,y,R/37.5*1.1,each?COL.each:COL.touch);
+ const base=hold?-Math.PI/4:-Math.PI/4-Math.PI/4;
+ const hc=['#FF6B6B','#FFE66D','#2ECC71','#3498DB'],ang4=hold?[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4]:[-Math.PI/2,0,Math.PI/2,Math.PI];
+ g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=8*U();g.shadowOffsetX=g.shadowOffsetY=2*U();
+ ang4.forEach((a,k)=>{
+  const px=x+Math.cos(a)*u,py=y+Math.sin(a)*u,rt=a+Math.PI,pa=a+Math.PI/2,pb=a-Math.PI/2;
+  const V=[[px+Math.cos(rt)*cs,py+Math.sin(rt)*cs],[px+Math.cos(pa)*cs,py+Math.sin(pa)*cs],[px+Math.cos(pb)*cs,py+Math.sin(pb)*cs]];
+  g.globalAlpha=al*ha;
+  let fill;
+  if(hold)fill=hc[k];
+  else{const gr=g.createLinearGradient(px,py,V[0][0],V[0][1]);gr.addColorStop(0,each?COL.each:COL.touch);gr.addColorStop(1,each?'#FFB800':'#0070FF');fill=gr}
+  g.beginPath();rpoly(V,8*U());
+  if(!hold){const cxm=(V[0][0]+V[1][0]+V[2][0])/3,cym=(V[0][1]+V[1][1]+V[2][1])/3,kk=.4,W=V.map(v=>[cxm+(v[0]-cxm)*kk,cym+(v[1]-cym)*kk]);rpoly(W.slice().reverse(),8*U()*kk)}
+  g.fillStyle=fill;g.fill('evenodd');
+  g.shadowColor='transparent';g.shadowBlur=0;g.shadowOffsetX=g.shadowOffsetY=0;
+  g.strokeStyle='#fff';g.lineWidth=2*U();g.beginPath();rpoly(V,8*U());g.stroke();
+  if(!hold){const cxm=(V[0][0]+V[1][0]+V[2][0])/3,cym=(V[0][1]+V[1][1]+V[2][1])/3,W=V.map(v=>[cxm+(v[0]-cxm)*.4,cym+(v[1]-cym)*.4]);g.beginPath();rpoly(W,8*U()*.4);g.stroke()}
+ });
+ g.shadowColor='transparent';g.shadowBlur=0;g.shadowOffsetX=g.shadowOffsetY=0;
+ if(hold&&d<0){
+  const prog=Math.min(-d/n.d,1),i=R/4.46*1.1,o=i/2*Math.sqrt(2);
+  const pts=[[x,y-o],[x+o,y],[x,y+o],[x-o,y]],cc=4*prog;
+  g.globalAlpha=al;g.lineWidth=R/31.25*1.1;
+  for(let k=0;k<4;k++){const f=clamp(cc-k,0,1);if(f<=0)continue;const a=pts[k],b=pts[(k+1)%4];g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f);g.strokeStyle=hc[k];g.stroke()}
+ }
+ if(n.fw){g.globalAlpha=al;g.beginPath();polyPath(starPts(x,y,R*.045,0));g.fillStyle='#f6c23a';g.fill();g.strokeStyle='#fff';g.lineWidth=1.2;g.stroke()}
+ g.restore();
+}
+function noteColor(n){return n.k==='star'?(n.b?COL.brk:n.each?COL.starEach:COL.star):(n.b?COL.brk:n.each?COL.each:COL.tap)}
+function drawHold0(n){
+ const hp=nPos(n.t,true),ep=nPos(n.t+n.d,false);
+ if(hp.d>A)return;
+ const c=n.b?COL.brk:n.each?COL.each:COL.tap;
+ if(hp.d>0)trail(n.l,R*hp.r,c);
+ holdShape(hp,ep,n.l,c);
+}
+function drawTap0(n){
+ const p=nPos(n.t,false);
+ if(p.d>A)return;
+ const a=ang(n.l),r=R*p.r,x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r,c=noteColor(n);
+ if(p.d>0)trail(n.l,r,c);
+ if(n.k==='star'){
+  const sc=R/12.5*p.s*1.15*1.25;
+  starShape(x,y,sc,c,!!n.x,n.b?'rgba(255,200,120,.8)':n.each?'rgba(255,245,150,.8)':'rgba(100,230,230,.8)');
+ }else tapShape(x,y,p.s,n.b?COL.brk:c,!!n.b,!!n.x);
+}
+function bg(){
+ if(judge==='blind')return;
+ if(judge==='simple'){g.lineWidth=3*U();g.strokeStyle='#fff';g.beginPath();g.arc(cx,cy,R,0,TAU);g.stroke()}
+ for(let k=1;k<=8;k++){const[x,y]=laneXY(k,R);dot(x,y,9*U(),'#fff')}
+}
+function drawTap(n){
+ if(n.res!==undefined&&n.res<4)return;
+ if(now>n.t+.25||n.t-now>A)return;
+ g.save();g.globalAlpha=now>n.t?clamp(1-(now-n.t)/.25,0,1):1;drawTap0(n);g.restore();
+}
+function drawHold(n){
+ if(n.res!==undefined&&n.res<4)return;
+ if(now>n.t+n.d+.05||n.t-now>A)return;
+ g.save();if(n.res===4)g.globalAlpha=.4;drawHold0(n);g.restore();
+}
+
+
+/* ================= プレイ用: 判定・スコア ================= */
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const QS=new URLSearchParams(location.search),SONG=QS.get('song'),DIFF=QS.get('diff');
+const DN={1:'EASY',2:'BASIC',3:'ADVANCED',4:'EXPERT',5:'MASTER',6:'Re:MASTER',7:'UTAGE'};
+const DC={1:'#3bb54a',2:'#3bb54a',3:'#f0a020',4:'#e03a4a',5:'#9b3fd0',6:'#b58ae8',7:'#ff4fa3'};
+const JN=['CRITICAL PERFECT','PERFECT','GREAT','GOOD','MISS'];
+const JC=['#ffd84a','#ff9a2e','#ff5db1','#5ddf6a','#6ec8ff'];
+const JS=['CP','P','GR','GD','MS'];
+const WIN={tap:[.01667,.05,.1,.15],touch:[.15,.2,.25,.3],ex:[.15,.15,.15,.15]};
+const BASE={tap:500,hold:1000,slide:1500,touch:500,brk:2500};
+const TYPES=['tap','hold','slide','touch','brk'],TN={tap:'TAP',hold:'HOLD',slide:'SLIDE',touch:'TOUCH',brk:'BREAK'};
+const FRAC=[1,1,.8,.5,0];
+const BONUS_HI=.03334;
+
+let showFL=true,state='load',meta={title:'',artist:'',first:0,lv:'',des:''},cfg={},base='',abuf=null;
+let ctx=null,srcNode=null,T0=0,LEAD=2,aT=0,pT=0,lastClk=0,jOff=0,lastJt=-9,pauseClk=0;
+let counts,combo,maxCombo,lostBase,lostBonus,baseMax,bonusMax,fast,late,fx=[],pops=[];
+const ptrs=new Map(),kbd=new Set();let pressed=new Array(9).fill(false);
+/* ---- センサー(実機準拠: A1-8,B1-8,C,D1-8,E1-8 の33個。スライドはA/B/Cの17個のみ使用) ---- */
+const SENS=[{z:'C',i:0,x:0,y:0}];
+for(const z of'ABDE')for(let i=1;i<=8;i++){const a=(z==='D'||z==='E')?-Math.PI/2+(i-1)*Math.PI/4:ang(i),r=ZR[z];SENS.push({z,i,x:Math.cos(a)*r,y:Math.sin(a)*r})}
+const sid=(z,i)=>z==='C'?0:1+'ABDE'.indexOf(z)*8+(i-1);
+function nearestSens(ux,uy,lim){let b=0,bd=1e9;for(let k=0;k<lim;k++){const q=SENS[k],d=(q.x-ux)*(q.x-ux)+(q.y-uy)*(q.y-uy);if(d<bd){bd=d;b=k}}return b}
+/* 指(の軌跡)が触れているセンサー集合。a33=全センサー(タッチ用) / a17=A,B,C(スライド用) */
+function senseAll(mv){
+ const a33=new Set(),a17=new Set(),fr=R*.045;
+ const add=(x,y)=>{const ux=(x-cx)/R,uy=(y-cy)/R;if(ux*ux+uy*uy>1.45*1.45)return;a33.add(nearestSens(ux,uy,33));a17.add(nearestSens(ux,uy,17))};
+ for(const p of ptrs.values()){
+  if(mv&&!p.mv)continue;   /* mv=true: 動いている点だけ(タップ/タッチの判定用) */
+  const dx=p.x-p.px,dy=p.y-p.py,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(R*.05)));
+  for(let i=0;i<=n;i++)add(p.px+dx*i/n,p.py+dy*i/n);
+  add(p.x+fr,p.y);add(p.x-fr,p.y);add(p.x,p.y+fr);add(p.x,p.y-fr);   /* 指の面積 */
+ }
+ return[a33,a17];
+}
+
+function setHS(v){hs=v;A=2.25/(.6*hs)}
+
+/* ---- 時計(AudioContext基準、補間つき) ---- */
+function raw(){return ctx?ctx.currentTime:performance.now()/1000}
+function sync(){const a=raw(),p=performance.now();if(a!==aT){aT=a;pT=p}}
+function clock(){sync();const c=aT+(performance.now()-pT)/1000;if(c>lastClk)lastClk=c;return lastClk}
+function evtTime(ts){sync();const p=performance.now();if(!(Math.abs(ts-p)<1000))ts=p;return aT+(ts-pT)/1000-T0-LEAD+jOff}
+
+/* ---- 初期化 ---- */
+const segDist=(ax,ay,bx,by,x,y)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;let u=l?((x-ax)*dx+(y-ay)*dy)/l:0;u=u<0?0:u>1?1:u;return Math.hypot(ax+dx*u-x,ay+dy*u-y)};
+
+function prep(){
+ baseMax=0;bonusMax=0;
+ for(const n of notes){
+  n.ty=n.k==='touch'?(n.d>0?'hold':'touch'):(n.k==='hold'?'hold':'tap');
+  if(n.b&&n.k!=='touch')n.ty='brk';
+  if(n.k!=='hid'){baseMax+=BASE[n.ty];if(n.ty==='brk')bonusMax+=100}
+  for(const s of n.sl||[]){
+   s.ty=s.b?'brk':'slide';baseMax+=BASE[s.ty];if(s.ty==='brk')bonusMax+=100;
+   /* wifi(扇)は一本の指で3本同時には辿れないので中央の経路のみを必要とする */
+   const mp=s.paths[s.w?1:0],q=[];let ul=0;
+   for(let i=0;i<=200;i++){const pt=at(mp,mp.len*i/200),id=nearestSens(pt[0],pt[1],17);if(q[q.length-1]!==id){q.push(id);ul=i/200}}
+   s.seqs=[q];s.pis=[0];s.end=mp.pts[mp.pts.length-1];
+   s.ul=ul;   /* ガイド星が最後のセンサー領域に入る位置(経路比)。判定の基準時刻になる */
+  }
+ }
+}
+function buildGroups(){
+ const adj=(a,b)=>{const A_=SENS[a],B_=SENS[b],d=Math.hypot(A_.x-B_.x,A_.y-B_.y),out=z=>z==='A'||z==='D';return d<.5||(out(A_.z)&&out(B_.z)&&d<.72)};
+ const bk=new Map();
+ for(const n of notes)if(n.k==='touch'&&n.d===0){n.sid=sid(n.z,n.i);n.grp=null;const k=Math.round(n.t*1000);if(!bk.has(k))bk.set(k,[]);bk.get(k).push(n)}
+ for(const arr of bk.values()){
+  const par=arr.map((_,i)=>i),f=i=>par[i]===i?i:(par[i]=f(par[i]));
+  for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)if(adj(arr[i].sid,arr[j].sid))par[f(i)]=f(j);
+  const gs=new Map();arr.forEach((n,i)=>{const r=f(i);if(!gs.has(r))gs.set(r,{all:[],hit:0});gs.get(r).all.push(n);n.grp=gs.get(r)});
+ }
+ for(const n of notes)if(n.k==='touch'&&n.sid===undefined)n.sid=sid(n.z,n.i);
+}
+function resetRun(){
+ for(const n of notes){n.res=undefined;n.hd=undefined;n.hs=0;n.ht=0;n.tt=0;n.hp=0;for(const s of n.sl||[]){s.res=undefined;s.pis=s.pis.map(()=>0);s.pf=0}if(n.grp)n.grp.hit=0}
+ counts={};for(const t of TYPES)counts[t]=[0,0,0,0,0];
+ combo=0;maxCombo=0;lostBase=0;lostBonus=0;fast=0;late=0;fx=[];pops=[];ptrs.clear();kbd.clear();pressed.fill(false);
+}
+const achProj=()=>(baseMax?(baseMax-lostBase)/baseMax*100:100)+(bonusMax?(bonusMax-lostBonus)/bonusMax:0);
+
+/* ---- 判定の確定 ---- */
+function award(it,j,dt,x,y){
+ it.res=j;const ty=it.ty;counts[ty][j]++;
+ let b=0,bo=0;
+ if(ty==='brk'){b=j<4?2500:0;bo=j===0?100:j===1?(Math.abs(dt)<=BONUS_HI?75:50):j===2?40:j===3?30:0}
+ else b=BASE[ty]*FRAC[j];
+ lostBase+=BASE[ty]-b;if(ty==='brk')lostBonus+=100-bo;
+ if(j>=1&&j<=3){dt<0?fast++:late++}
+ if(j<4){combo++;if(combo>maxCombo)maxCombo=combo;if(sndOn)beep(it.each)}else combo=0;
+ if(j<4)fx.push({x,y,t0:now,j});
+ pops.push({x:cx+(x-cx)*.62,y:cy+(y-cy)*.62,t0:now,j,fl:(showFL&&j>=1&&j<=3)?(dt<0?'FAST':'LATE'):''});
+}
+const lanePt=l=>laneXY(l,R);
+/* スライド判定: 基準は星が最後のセンサー領域に入る時刻。滞在時間T/4だけCRITICAL幅が広がる(上限±600ms) */
+const slideJ=(dt,T)=>{const cp=Math.min(.23334+(T||0)/4,.6),gr=Math.max(.43334,cp);if(dt<-gr)return 4;const a=Math.abs(dt);if(a<=cp)return 0;if(a<=gr)return 2;return dt<=.6?3:4};
+const judgeWin=(dt,w)=>{const a=Math.abs(dt);for(let j=0;j<4;j++)if(a<=w[j])return j;return 4};
+
+/* ---- 入力 ---- */
+function laneOf(px,py){const dx=px-cx,dy=py-cy,r=Math.hypot(dx,dy);if(r<R*.58||r>R*1.7)return 0;return wrap(Math.round((Math.atan2(dy,dx)+Math.PI/2)/(Math.PI/4)+.5))}
+function pressLane(k,t){
+ for(const n of notes){
+  if(n.t>t+.151)break;
+  if(n.l!==k||n.res!==undefined||n.hd||(n.k!=='tap'&&n.k!=='star'&&n.k!=='hold'))continue;
+  const w=n.x?WIN.ex:WIN.tap,dt=t-n.t;
+  if(dt<-w[3]||dt>w[3])continue;
+  const j=judgeWin(dt,w),[x,y]=lanePt(n.l);
+  if(n.k==='hold'){n.hd={j,dt};n.hs=1;n.hp=t;n.px_=x;n.py_=y}else award(n,j,dt,x,y);
+  return;
+ }
+}
+function evalTouch(t,s33){
+ for(const n of notes){
+  if(n.t>t+.301)break;
+  if(n.k!=='touch'||n.res!==undefined||n.hd||t<n.t-.3)continue;
+  if(!s33.has(n.sid))continue;
+  const[x,y]=tpos(n),dt=t-n.t,j=judgeWin(dt,WIN.touch);
+  if(n.d>0){n.hd={j,dt};n.hs=1;n.hp=t;continue}
+  award(n,j,dt,x,y);
+  const g_=n.grp;
+  if(g_){g_.hit++;if(g_.hit>=Math.ceil(.51*g_.all.length))for(const m of g_.all)if(m.res===undefined){const[mx,my]=tpos(m);award(m,j,dt,mx,my)}}
+ }
+}
+function stepSeq(seq,pi,set){
+ let ch=true;const skip=seq.length>3;
+ while(ch&&pi<seq.length){ch=false;
+  if(set.has(seq[pi])){pi++;ch=true}
+  else if(skip&&pi+1<seq.length&&set.has(seq[pi+1])){pi+=2;ch=true}
+ }
+ return pi;
+}
+function evalSlides(t,s17){
+ for(const n of notes){
+  if(n.t-.1>t)break;
+  if(!n.sl||!n.sl.length)continue;
+  for(const s of n.sl){
+   if(s.res!==undefined)continue;
+   let done=true,pf=0;
+   for(let i=0;i<s.seqs.length;i++){s.pis[i]=stepSeq(s.seqs[i],s.pis[i],s17);if(s.pis[i]<s.seqs[i].length)done=false;pf+=s.pis[i]/s.seqs[i].length}
+   s.pf=pf/s.seqs.length;
+   if(done){const dt=t-(n.t+s.beat+s.d*s.ul);award(s,slideJ(dt,s.d*(1-s.ul)),dt,cx+s.end[0]*R,cy+s.end[1]*R)}
+  }
+ }
+}
+function recalcPressed(){
+ pressed.fill(false);
+ for(const p of ptrs.values()){const k=laneOf(p.x,p.y);if(k)pressed[k]=true}
+ for(const k of kbd)pressed[k]=true;
+}
+function updateHolds(t,prev,s33){
+ for(const n of notes){
+  if(n.t>t)break;
+  if(n.hs!==1||n.res!==undefined)continue;
+  const end=n.t+n.d,lim=end-.15,st=Math.max(n.t,n.hp);
+  const a=Math.max(prev,st),b=Math.min(t,lim);
+  if(b>a){
+   let held;
+   if(n.k==='touch')held=s33.has(n.sid);else held=pressed[n.l];
+   n.tt+=b-a;if(held)n.ht+=b-a;
+  }
+  if(t>=end){
+   const ratio=n.tt>.001?n.ht/n.tt:1;let j=n.hd.j;
+   if(ratio<.4)j=4;else if(ratio<.7)j=Math.max(j,3);else if(ratio<.9)j=Math.max(j,2);
+   const[x,y]=n.k==='touch'?tpos(n):lanePt(n.l);
+   n.hs=2;award(n,j,n.hd.dt,x,y);
+  }
+ }
+}
+function updateMiss(t){
+ for(const n of notes){
+  if(n.k==='tap'||n.k==='star'||n.k==='hold'){
+   if(n.res===undefined&&!n.hd&&t>n.t+.151){const[x,y]=lanePt(n.l);award(n,4,0,x,y)}
+  }else if(n.k==='touch'){
+   if(n.res===undefined&&!n.hd&&t>n.t+.301){const[x,y]=tpos(n);award(n,4,0,x,y)}
+  }
+  for(const s of n.sl||[])if(s.res===undefined&&t>n.t+s.beat+s.d+.601)award(s,4,0,cx+s.end[0]*R,cy+s.end[1]*R);
+ }
+}
+
+/* ---- ポインタ ---- */
+function toLocal(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*S/r.width,(e.clientY-r.top)*S/r.height]}
+const isUI=e=>e.target&&e.target.closest&&e.target.closest('.ui');
+function onDown(e){
+ if(state!=='play'||isUI(e)||(e.pointerType==='mouse'&&e.button!==0))return;
+ const[x,y]=toLocal(e),k=laneOf(x,y);ptrs.set(e.pointerId,{x,y,px:x,py:y,lane:k});
+ const t=evtTime(e.timeStamp);
+ if(k)pressLane(k,t);
+ {const[a,b]=senseAll();evalTouch(t,a);evalSlides(t,b)}
+}
+/* 指を外周に沿って隣のレーンへ滑らせたとき、そのレーンのタップに反応する */
+function laneWalk(p,t){
+ const dx=p.x-p.px,dy=p.y-p.py,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(R*.04)));
+ for(let i=1;i<=n;i++){
+  const k=laneOf(p.px+dx*i/n,p.py+dy*i/n);
+  if(k!==p.lane){const d=(k-p.lane+8)%8;if(k&&p.lane&&(d===1||d===7))pressLane(k,t);p.lane=k}
+ }
+}
+function onMove(e){
+ const p=ptrs.get(e.pointerId);if(!p||state!=='play')return;
+ const list=e.getCoalescedEvents?e.getCoalescedEvents():null;
+ for(const ce of(list&&list.length?list:[e])){
+  p.px=p.x;p.py=p.y;[p.x,p.y]=toLocal(ce);
+  const t=evtTime(ce.timeStamp||e.timeStamp);laneWalk(p,t);{const[a,b]=senseAll();evalTouch(t,a);evalSlides(t,b)}
+ }
+ p.px=p.x;p.py=p.y;
+}
+const onUp=e=>{ptrs.delete(e.pointerId)};
+/* 入力は画面タッチではなく手のトラッキング(handFeed)から入る */
+document.addEventListener('touchstart',e=>{if(state==='play'&&!isUI(e))e.preventDefault()},{passive:false});
+document.addEventListener('touchmove',e=>{if(state==='play')e.preventDefault()},{passive:false});
+['gesturestart','gesturechange','contextmenu'].forEach(n=>document.addEventListener(n,e=>e.preventDefault()));
+addEventListener('keydown',e=>{
+ if(state!=='play'||e.repeat)return;
+ if(e.key==='Escape'){pauseGame();return}
+ const k=+e.key;if(k>=1&&k<=8){kbd.add(k);pressLane(k,evtTime(e.timeStamp))}
+});
+addEventListener('keyup',e=>{const k=+e.key;if(k>=1&&k<=8)kbd.delete(k)});
+
+/* ---- 音 ---- */
+function beep(each){
+ if(window.OutProfile&&OutProfile.effective(ctx)==='bt')return;   /* イヤホン・Bluetooth時はズレるので鳴らさない */
+ if(!ctx)return;const o=ctx.createOscillator(),v=ctx.createGain(),t=ctx.currentTime;
+ o.type='square';o.frequency.value=each?1700:1200;v.gain.setValueAtTime(.05,t);v.gain.exponentialRampToValueAtTime(.001,t+.05);
+ o.connect(v);v.connect(ctx.destination);o.start(t);o.stop(t+.06);
+}
+function stopSrc(){if(srcNode){try{srcNode.stop()}catch(e){}try{srcNode.disconnect()}catch(e){}srcNode=null}}
+
+/* ---- 描画(プレイ用) ---- */
+function drawFx(){
+ for(let k=1;k<=8;k++)if(pressed[k]){const[x,y]=lanePt(k);dot(x,y,15*U(),'rgba(255,255,255,.3)')}
+ fx=fx.filter(f=>now-f.t0<.35&&now>=f.t0-.05);
+ const fc=['#ffe066','#ffb347','#ff7ac8','#7fe88a'];
+ for(const f of fx){
+  const a=clamp((now-f.t0)/.35,0,1),r=R/12.5*1.36*(.9+a*1.1);
+  g.save();g.globalAlpha=1-a;g.strokeStyle=fc[f.j];g.lineWidth=(4*(1-a)+1)*U();
+  g.beginPath();g.arc(f.x,f.y,r,0,TAU);g.stroke();
+  for(let i=0;i<8;i++){const th=i*TAU/8+.3,rr=r*(1.1+a*.9);dot(f.x+Math.cos(th)*rr,f.y+Math.sin(th)*rr,3*U()*(1-a)+.5,fc[f.j])}
+  g.restore();
+ }
+}
+function drawPops(){
+ pops=pops.filter(p=>now-p.t0<.7&&now>=p.t0-.05);
+ for(const p of pops){
+  const a=now-p.t0,al=a>.45?1-(a-.45)/.25:1,sc=a<.08?1+(.08-a)*3:1;
+  g.save();g.translate(p.x,p.y);g.scale(sc,sc);g.globalAlpha=clamp(al,0,1);g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';
+  g.font=`bold ${S*(p.j===0?.03:.036)}px system-ui,sans-serif`;g.lineWidth=S*.008;g.strokeStyle='rgba(0,0,0,.85)';
+  g.strokeText(JN[p.j],0,0);g.fillStyle=JC[p.j];g.fillText(JN[p.j],0,0);
+  if(p.fl){g.font=`bold ${S*.03}px system-ui,sans-serif`;g.strokeText(p.fl,0,S*.042);g.fillStyle=p.fl==='FAST'?'#4aa3ff':'#ff8a3d';g.fillText(p.fl,0,S*.042)}
+  g.restore();
+ }
+}
+function hud(){
+ const f=S*.04,m=S*.03;
+ g.save();g.shadowColor='rgba(0,0,0,.6)';g.shadowBlur=4*U();
+ g.textBaseline='top';g.textAlign='left';g.fillStyle='#fff';g.font=`bold ${f*.6}px system-ui,sans-serif`;
+ g.fillText(meta.title,m+(state==='play'?S*.07:0),m*.6,S*.3);
+ g.textAlign='right';g.font=`bold ${f}px system-ui,sans-serif`;g.fillStyle='#fff';
+ if(counts)g.fillText(achProj().toFixed(4)+'%',S-m,m*.6);
+ if(counts&&combo>=2){
+  g.textAlign='center';g.textBaseline='middle';g.globalAlpha=.4;
+  g.font=`bold ${S*.1}px system-ui,sans-serif`;g.fillStyle='#fff';g.fillText(combo,cx,cy);
+  g.font=`bold ${S*.03}px system-ui,sans-serif`;g.fillText('COMBO',cx,cy-S*.07);g.globalAlpha=1;
+ }
+ if(counts){
+  g.textBaseline='bottom';g.textAlign='left';g.font=`bold ${S*.024}px system-ui,sans-serif`;
+  for(let j=0;j<5;j++){let s=0;for(const t of TYPES)s+=counts[t][j];g.fillStyle=JC[j];g.fillText(JS[j]+' '+s,m,S-m*.4-(4-j)*S*.028)}
+  g.textAlign='right';g.fillStyle='#4aa3ff';g.fillText('FAST '+fast,S-m,S-m*.4-S*.028);g.fillStyle='#ff8a3d';g.fillText('LATE '+late,S-m,S-m*.4);
+ }
+ g.restore();
+}
+function draw(){
+ g.clearRect(0,0,WW,HH);g.save();g.fillStyle='rgba(8,9,20,'+dimA+')';g.fillRect(0,0,WW,HH);g.translate(OX,OY);bg();
+ const half=A/2;
+ for(const n of notes){if(n.t-half>now)break;if(n.sl)for(const s of n.sl)drawSlide(n,s)}
+ const grp=new Map();
+ for(const n of notes){
+  if(n.t-A>now)break;if(n.k==='touch'||n.k==='hid'||n.l==null)continue;
+  const d=n.t-now;if(d<=0||d>A)continue;
+  const key=n.t.toFixed(4);if(!grp.has(key))grp.set(key,[]);grp.get(key).push(n);
+ }
+ for(const[,a]of grp)if(a.length>=2){const r=R*nPos(a[0].t,false).r;for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)eachArc(a[i].l,a[j].l,r)}
+ for(let i=notes.length-1;i>=0;i--){const n=notes[i];if(n.k==='hold')drawHold(n)}
+ for(let i=notes.length-1;i>=0;i--){const n=notes[i];if(n.k==='touch')drawTouch(n)}
+ for(let i=notes.length-1;i>=0;i--){const n=notes[i];if(n.k==='tap'||n.k==='star')drawTap(n)}
+ drawFx();drawPops();drawHands();hud();drawDbg();
+ g.restore();
+}
+
+/* ---- ループ ---- */
+function frame(){
+ const nt=performance.now();for(const[k,p]of ptrs)if(nt-p.seen>150)ptrs.delete(k);   /* 手が見えなくなって0.15秒で指を離した扱い */
+ rf++;if(nt-rt0>=1000){rfps=rf*1000/(nt-rt0);rf=0;rt0=nt}
+ if(state==='play'){
+  now=clock()-T0-LEAD;const jt=now+jOff;
+  recalcPressed();
+  const[s33,s17]=senseAll(),[m33]=senseAll(true);
+  updateHolds(jt,lastJt,s33);evalTouch(jt,m33);evalSlides(jt,s17);updateMiss(jt);
+  lastJt=jt;
+  if(now>endT+1.5)finish();
+ }
+ draw();requestAnimationFrame(frame);
+}
+
+/* ---- 進行 ---- */
+const show=(id,on)=>$(id).classList.toggle('on',!!on);
+async function startRun(){
+ stopSrc();resetRun();
+ if(ctx){try{await ctx.resume()}catch(e){}}
+ showProf(false);   /* 再生開始時に出力遅延を再判定 */
+ setHS(+$('hs').value);jOff=+$('of').value/1000;sndOn=$('snd').checked;showFL=$('fl').checked;
+ aT=raw();pT=performance.now();lastClk=aT;T0=aT+.15;now=-LEAD;lastJt=-LEAD+jOff;
+ if(abuf&&ctx){
+  srcNode=ctx.createBufferSource();srcNode.buffer=abuf;srcNode.connect(ctx.destination);
+  const ps=-LEAD+meta.first+(cfg.audioOffsetMs||0)/1000+(+$('au').value||0)/1000;   /* 音源補正: 出力遅延ぶん音を早く鳴らす */
+  if(ps>=0)srcNode.start(T0,ps);else srcNode.start(T0-ps,0);
+ }
+ state='play';show('ready',0);show('pause',0);show('result',0);$('pbtn').style.display='block';
+}
+function pauseGame(){
+ if(state!=='play')return;
+ state='pause';pauseClk=clock();ptrs.clear();kbd.clear();pressed.fill(false);
+ if(ctx)ctx.suspend();show('pause',1);$('pbtn').style.display='none';
+}
+async function resumeGame(){
+ if(state!=='pause')return;
+ if(ctx){try{await ctx.resume()}catch(e){}}
+ aT=raw();pT=performance.now();T0+=aT-pauseClk;lastClk=aT;
+ show('pause',0);state='play';$('pbtn').style.display='block';
+}
+function rankOf(a){return a>=100.5?'SSS+':a>=100?'SSS':a>=99.5?'SS+':a>=99?'SS':a>=98?'S+':a>=97?'S':a>=94?'AAA':a>=90?'AA':a>=80?'A':a>=75?'BBB':a>=70?'BB':a>=60?'B':a>=50?'C':'D'}
+function finish(){
+ for(const n of notes){
+  if(n.k!=='hid'&&n.res===undefined){const[x,y]=n.k==='touch'?tpos(n):lanePt(n.l);award(n,4,0,x,y)}
+  for(const s of n.sl||[])if(s.res===undefined)award(s,4,0,cx+s.end[0]*R,cy+s.end[1]*R);
+ }
+ state='result';stopSrc();$('pbtn').style.display='none';
+ const a=achProj(),bk='best:'+SONG+':'+DIFF;let best=parseFloat(store.get(bk,'0'))||0;const isNew=a>best;if(isNew)store.set(bk,a.toFixed(4));
+ $('xt').textContent=meta.title+(DIFF?' ['+(DN[DIFF]||DIFF)+']':'');
+ $('xr').textContent=rankOf(a);$('xa').textContent=a.toFixed(4)+'%';
+ let mi=0,gg=0;for(const t of TYPES){mi+=counts[t][4];gg+=counts[t][2]+counts[t][3]}
+ $('xf').textContent=mi===0?(gg===0?'ALL PERFECT':'FULL COMBO'):'';
+ let h='<tr><th></th>'+JS.map((s,j)=>`<th style="color:${JC[j]}">${s}</th>`).join('')+'</tr>';
+ for(const t of TYPES){if(!counts[t].some(v=>v))continue;h+=`<tr><td>${TN[t]}</td>`+counts[t].map(v=>`<td>${v}</td>`).join('')+'</tr>'}
+ $('xtab').innerHTML=h;
+ $('xm').textContent=`MAX COMBO ${maxCombo}  /  FAST ${fast}  LATE ${late}`+(isNew?'  /  NEW RECORD!':`  /  BEST ${best.toFixed(4)}%`);
+ show('result',1);
+}
+
+/* ---- 読み込み ---- */
+function pickChart(tx,diff){const m=[...tx.matchAll(/&inote_(\d)=([\s\S]*?)(?=\n&|$)/g)];if(!m.length)return tx;const f=diff&&m.find(x=>x[1]===diff);return(f||m[m.length-1])[2]}
+async function boot(){
+ const hs0=store.get('p_hs','6');
+ $('hs').value=hs0;$('snd').checked=store.get('p_snd','1')==='1';$('fl').checked=store.get('p_fl','1')==='1';
+ $('hsv').textContent=(+hs0).toFixed(2);setHS(+hs0);
+ $('pt').value=store.get('c_pt','pip');
+ $('mv').value=store.get('c_mv','3');mvThr=+$('mv').value/100;$('mvv').textContent=$('mv').value;
+ $('dm').value=store.get('c_dm','35');dimA=+$('dm').value/100;$('dmv').textContent=$('dm').value;
+ $('skl').checked=store.get('c_sk','1')==='1';showSk=$('skl').checked;
+ $('of').value=store.get('c_of','-60');$('ofv').textContent=$('of').value;
+ try{ctx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){ctx=null}
+ $('om').value=OutProfile.mode();showProf(true);
+ if(!SONG){$('rt').textContent='曲が選ばれていません';$('go').textContent='メニューへ';$('go').disabled=false;$('go').onclick=()=>location.href='index.html';return}
+ base='songs/'+encodeURIComponent(SONG)+'/';
+ try{
+  const tx=await(await fetch(base+'maidata.txt')).text();
+  const gv=k=>(new RegExp('^&'+k+'=(.*)$','m').exec(tx)||[,''])[1].trim();
+  const fd=DIFF?gv('first_'+DIFF):'';   /* 難易度別の &first_N= があればそれを優先、なければ &first= */
+  meta={title:gv('title')||SONG,artist:gv('artist'),first:parseFloat(fd!==''?fd:gv('first'))||0,lv:gv('lv_'+DIFF),des:gv('des_'+DIFF)};
+  document.title=meta.title+' - Play';
+  $('rt').textContent=meta.title;$('ra').textContent=meta.artist;
+  if(DIFF){const d=$('rd');d.style.display='inline-block';d.style.background=DC[DIFF]||'#888';d.textContent=(DN[DIFF]||DIFF)+(meta.lv?'  Lv '+meta.lv:'')}
+  parse(pickChart(tx,DIFF));prep();buildGroups();resetRun();now=-LEAD;
+  for(const f of['song.json','songs.json']){try{const r=await fetch(base+f);if(r.ok){cfg=await r.json();break}}catch(e){}}
+  {const c=[...new Set([cfg.jacket,'jacket.jpg','jacket.jpeg','jacket.png','bg.png','bg.jpg'].filter(Boolean))].map(x=>base+x),im=$('jk'),nx=()=>{if(c.length)im.src=c.shift();else im.removeAttribute('src')};im.onerror=nx;nx()}
+  let msg='';
+  if(ctx){
+   const lt=await OutProfile.loadTrack(ctx,base,cfg);abuf=lt.buf;
+   if(lt.bad.length)console.warn('audio load failed:',lt.bad.join(', '));
+   if(!abuf)msg='音源が見つかりません: songs/'+SONG+'/'+lt.want+' を置いてください（無音で開始します）';
+  }else msg='音源なし（無音で開始します）';
+  $('rs').style.color=msg?'#ff8a8a':'';
+  $('rs').textContent=msg+(msg?'  ':'')+`ノーツ ${notes.length} / ${meta.first?'first '+meta.first+'s':''}`;
+  await initCam();$('go').disabled=false;$('go').textContent='START';
+ }catch(err){$('rt').textContent='読み込み失敗';$('rs').textContent=String(err.message||err)}
+}
+
+/* ================= カメラ・手トラッキング(MediaPipe Hands) ================= */
+const vCam=$('v');
+let hl=null,camOK=false,mvThr=.03,dimA=.35,showSk=true,OX=0,OY=0,WW=0,HH=0,fitS=1,fitX=0,fitY=0;
+let handVis=[],handVisT=0,detMs=0,detN=0,detFps=0,dt0=performance.now(),rf=0,rt0=performance.now(),rfps=0;
+const BONES=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+/* 映像は object-fit:cover で全画面表示しているので、同じ写像で 正規化座標 → 譜面座標(中央の正方形基準) に変換する */
+function fitCam(){const vw=vCam.videoWidth||WW,vh=vCam.videoHeight||HH;fitS=Math.max(WW/vw,HH/vh);fitX=(WW-vw*fitS)/2;fitY=(HH-vh*fitS)/2}
+const toLV=q=>[fitX+q.x*(vCam.videoWidth||WW)*fitS-OX,fitY+q.y*(vCam.videoHeight||HH)*fitS-OY];
+function judgeLM(lm,mode){
+ if(mode==='palm'){let sx=0,sy=0;for(const i of[0,5,9,13,17]){sx+=lm[i].x;sy+=lm[i].y}return[{x:sx/5,y:sy/5}]}
+ return({tip:[4,8,12,16,20],pip:[3,6,10,14,18],mcp:[2,5,9,13,17]}[mode]||[]).map(i=>lm[i]);
+}
+/* 検出結果 → ptrs(指の座標) に流し込む。以降の判定ロジックは画面タッチ版と同じ */
+function handFeed(r,tms){
+ fitCam();
+ const mode=$('pt').value,used=new Set(),play=state==='play',t=play?evtTime(tms):0;
+ handVis=r.landmarks.map(lm=>lm.map(toLV));handVisT=tms;
+ const hd=r.handedness||r.handednesses||[];
+ r.landmarks.forEach((lm,hi)=>{
+  let lab=(hd[hi]&&hd[hi][0]&&hd[hi][0].categoryName)||('H'+hi);while(used.has(lab))lab+='+';used.add(lab);
+  judgeLM(lm,mode).forEach((q,pi)=>{
+   const key=lab+pi,[x,y]=toLV(q);let p=ptrs.get(key);
+   if(!p){p={x,y,px:x,py:y,lane:laneOf(x,y),hist:[],mv:false};ptrs.set(key,p)}
+   else{p.px=p.x;p.py=p.y;p.x=x;p.y=y}
+   p.seen=tms;p.hist.push([tms,x,y]);while(p.hist.length>1&&tms-p.hist[0][0]>120)p.hist.shift();
+   let m=0;for(const h of p.hist)m=Math.max(m,Math.hypot(x-h[1],y-h[2]));
+   p.mv=m>=R*mvThr;   /* 直近0.12秒で しきい値以上動いたか */
+   const k=laneOf(x,y);
+   if(k!==p.lane){if(play&&k&&p.mv)pressLane(k,t);p.lane=k}   /* レーンに入った瞬間がタップ(動いているときだけ) */
+  });
+ });
+ if(play){const[a]=senseAll(true),[,b]=senseAll();evalTouch(t,a);evalSlides(t,b)}
+}
+function camFrame(){
+ if(hl&&vCam.readyState>=2){
+  const t0=performance.now();let r=null;
+  try{r=hl.detectForVideo(vCam,t0)}catch(e){}
+  const t1=performance.now();detMs=detMs?detMs*.9+(t1-t0)*.1:(t1-t0);detN++;
+  if(t1-dt0>=1000){detFps=detN*1000/(t1-dt0);detN=0;dt0=t1}
+  if(r)handFeed(r,t1);
+ }
+ camNext();
+}
+function camNext(){if(vCam.requestVideoFrameCallback)vCam.requestVideoFrameCallback(camFrame);else requestAnimationFrame(camFrame)}
+async function initCam(){
+ const cs=$('cs');
+ try{
+  cs.textContent='カメラ・手認識を準備中…';
+  const stm=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:60}}});
+  vCam.srcObject=stm;await vCam.play();
+  const V='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/';
+  const mp=await import(V+'vision_bundle.mjs');
+  const fs=await mp.FilesetResolver.forVisionTasks(V+'wasm');
+  hl=await mp.HandLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.5,minTrackingConfidence:.5});
+  camOK=true;cs.style.color='';cs.textContent='手認識: 準備OK';camNext();
+ }catch(e){cs.style.color='#ff8a8a';cs.textContent='カメラ/手認識の準備に失敗: '+(e.message||e)+'（キーボードの1〜8のみ使えます）'}
+}
+function drawHands(){
+ const nt=performance.now();
+ if(showSk&&nt-handVisT<250){g.save();g.strokeStyle='rgba(255,255,255,.45)';g.lineWidth=1.5;g.beginPath();for(const h of handVis)for(const[a,b]of BONES){g.moveTo(h[a][0],h[a][1]);g.lineTo(h[b][0],h[b][1])}g.stroke();g.restore()}
+ for(const p of ptrs.values()){g.save();g.fillStyle=p.mv?'#ffd84a':'rgba(255,216,74,.35)';g.strokeStyle='#000';g.lineWidth=1.5;g.beginPath();g.arc(p.x,p.y,7*U(),0,TAU);g.fill();g.stroke();g.restore()}
+}
+function drawDbg(){
+ g.save();g.font=`${S*.022}px ui-monospace,monospace`;g.textAlign='center';g.textBaseline='bottom';g.fillStyle='rgba(255,255,255,.6)';
+ g.fillText(`描画 ${rfps.toFixed(0)}fps / 検出 ${detFps.toFixed(0)}fps ${detMs.toFixed(0)}ms`,cx,S-S*.004);g.restore();
+}
+$('pt').onchange=e=>{store.set('c_pt',e.target.value);ptrs.clear()};
+$('mv').oninput=e=>{mvThr=+e.target.value/100;$('mvv').textContent=e.target.value;store.set('c_mv',e.target.value)};
+$('dm').oninput=e=>{dimA=+e.target.value/100;$('dmv').textContent=e.target.value;store.set('c_dm',e.target.value)};
+$('skl').onchange=e=>{showSk=e.target.checked;store.set('c_sk',e.target.checked?'1':'0')};
+$('go').onclick=()=>{if(!$('go').disabled&&SONG&&notes.length)startRun()};
+$('hs').oninput=e=>{$('hsv').textContent=(+e.target.value).toFixed(2);store.set('p_hs',e.target.value);setHS(+e.target.value)};
+/* ---- 出力デバイス別の補正(有線 / Bluetooth) ---- */
+let prof='';
+function showProf(reload){
+ const p=OutProfile.effective(ctx),ch=p!==prof;prof=p;
+ if(reload||ch){   /* プロファイルが変わったら、そのプロファイルの保存値に切り替える */
+  $('au').value=OutProfile.getAu(p,ctx);$('auv').textContent=$('au').value;
+ }
+ $('od').textContent=OutProfile.label(p,ctx);
+}
+$('om').onchange=e=>{OutProfile.setMode(e.target.value);showProf(true)};
+$('of').oninput=e=>{$('ofv').textContent=e.target.value;store.set('c_of',e.target.value)};   /* カメラ版は有線/BTとは別に保存 */
+$('au').oninput=e=>{$('auv').textContent=e.target.value;OutProfile.setAu(prof,e.target.value)};
+/* 画面を最初にタッチした時点で音声を起こし、出力遅延を測り直す(未再生だと0を返すブラウザがあるため) */
+$('ready').addEventListener('pointerdown',()=>{if(ctx&&ctx.state==='suspended')ctx.resume().then(()=>setTimeout(()=>showProf(false),300)).catch(()=>{})},{passive:true});
+if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>setTimeout(()=>{if(state!=='play')showProf(false)},600));
+$('snd').onchange=e=>store.set('p_snd',e.target.checked?'1':'0');
+$('fl').onchange=e=>store.set('p_fl',e.target.checked?'1':'0');
+$('pbtn').addEventListener('pointerdown',e=>{e.preventDefault();pauseGame()});
+$('pr').onclick=resumeGame;
+$('pt').onclick=()=>startRun();
+$('xre').onclick=()=>startRun();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseGame()});
+addEventListener('resize',resize);
+resize();requestAnimationFrame(frame);boot();
+</script></body></html>
